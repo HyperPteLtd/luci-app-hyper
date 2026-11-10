@@ -1,0 +1,162 @@
+name: CI
+
+# Tests on every push / PR; OpenWrt SDK builds for every push; a GitHub Release
+# with .ipk / .apk packages and sha256sums for every v* tag. The router's
+# "check for updates" reads that release (see luci.hyper: check_update / install_update).
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UCODE_REF: master
+  MBEDTLS_VERSION: 3.6.7
+
+jobs:
+  test:
+    name: Tests (ucode, hyper-crypt, renders)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y cmake libjson-c-dev pkg-config nftables
+
+      - name: Build ucode (host)
+        run: |
+          git clone --depth 1 --branch "$UCODE_REF" https://github.com/jow-/ucode.git /tmp/ucode
+          cmake -S /tmp/ucode -B /tmp/ucode/build -DCMAKE_BUILD_TYPE=Release \
+            -DUBUS_SUPPORT=OFF -DUCI_SUPPORT=OFF -DULOOP_SUPPORT=OFF -DRTNL_SUPPORT=OFF \
+            -DNL80211_SUPPORT=OFF -DDEBUG_SUPPORT=OFF -DFFI_SUPPORT=OFF -DDIGEST_SUPPORT=OFF \
+            -DZLIB_SUPPORT=OFF -DSERIAL_SUPPORT=OFF
+          make -C /tmp/ucode/build -j"$(nproc)"
+
+      - name: Build mbedtls ${{ env.MBEDTLS_VERSION }}
+        run: |
+          curl -fsSL -o /tmp/mbedtls.tar.bz2 \
+            "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-${MBEDTLS_VERSION}/mbedtls-${MBEDTLS_VERSION}.tar.bz2"
+          mkdir -p /tmp/mbedtls && tar -xjf /tmp/mbedtls.tar.bz2 -C /tmp/mbedtls --strip-components=1
+          cmake -S /tmp/mbedtls -B /tmp/mbedtls/build -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF -DGEN_FILES=OFF
+          make -C /tmp/mbedtls/build -j"$(nproc)" mbedcrypto
+
+      - name: ucode tests
+        run: UCODE=/tmp/ucode/build/ucode UCODE_LIB=/tmp/ucode/build sh tests/run.sh
+
+      # The generated config must load on the pinned sing-box core: the official SagerNet
+      # OpenWrt package (HYPER_SINGBOX_VERSION in luci-app-hyper/Makefile). Its x86_64
+      # binary is static, so it runs on the runner as is.
+      - name: sing-box check against the pinned core
+        run: |
+          sh scripts/fetch-sing-box.sh ipk /tmp/sb x86_64
+          mkdir -p /tmp/sb/root
+          tar -xOf /tmp/sb/sing-box_*_openwrt_x86_64.ipk data.tar.gz | tar -xzf - -C /tmp/sb/root ./usr/bin/sing-box
+          /tmp/sb/root/usr/bin/sing-box version
+          PATH="/tmp/sb/root/usr/bin:$PATH" UCODE=/tmp/ucode/build/ucode UCODE_LIB=/tmp/ucode/build sh tests/render_test.sh
+
+      - name: hyper-crypt tests
+        run: MBEDTLS=/tmp/mbedtls sh hyper-crypt/test/run.sh
+
+  build:
+    name: Build ${{ matrix.arch }}
+    needs: test
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # <package arch>-<OpenWrt release>: 24.10 produces .ipk (opkg), 25.12 produces .apk.
+        # luci-app-hyper is arch independent; hyper-crypt is built per arch.
+        # Tags checked on Docker Hub (openwrt/sdk) 2026-11-09; scripts/build-packages.sh
+        # builds the same releases locally.
+        arch:
+          - x86_64-24.10.8
+          - aarch64_cortex-a53-24.10.8
+          - aarch64_generic-24.10.8
+          - arm_cortex-a7_neon-vfpv4-24.10.8
+          - mipsel_24kc-24.10.8
+          - x86_64-25.12.6
+          - aarch64_cortex-a53-25.12.6
+          - aarch64_generic-25.12.6
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        if: hashFiles('web/package.json') != ''
+        with:
+          node-version: 24
+
+      - name: Build web UI into the package
+        if: hashFiles('web/package.json') != ''
+        run: |
+          npm --prefix web ci
+          npm --prefix web run typecheck
+          npm --prefix web run lint
+          npm --prefix web test
+          npm --prefix web run build
+
+      - name: Build packages
+        # Pinned: the action has no releases
+        uses: openwrt/gh-action-sdk@f5813d30eeef3534b58ac7e79c5d8842b6035434
+        env:
+          ARCH: ${{ matrix.arch }}
+          FEEDNAME: hyper
+          PACKAGES: hyper-crypt luci-app-hyper
+          NO_REFRESH_CHECK: 1
+          V: s
+
+      - name: Collect
+        run: |
+          mkdir -p dist
+          find bin/packages -path '*/hyper/*' \( -name '*.ipk' -o -name '*.apk' \) -exec cp {} dist/ \;
+          # apk file names carry no arch: add it for hyper-crypt so arches do not collide in the release
+          pkg_arch="${{ matrix.arch }}"; pkg_arch="${pkg_arch%-*}"
+          for f in dist/hyper-crypt-*.apk; do
+            [ -e "$f" ] || continue
+            mv "$f" "${f%.apk}-${pkg_arch}.apk"
+          done
+          # sing-box core: the official SagerNet package for this CPU, downloaded as is (pinned)
+          case "${{ matrix.arch }}" in *-2[0-4].*) ext=ipk ;; *) ext=apk ;; esac
+          sh scripts/fetch-sing-box.sh "$ext" dist "$pkg_arch"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-${{ matrix.arch }}
+          path: dist/*
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          pattern: packages-*
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd artifacts
+          ls -la
+          sha256sum *.ipk *.apk > sha256sums
+          cat sha256sums
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            artifacts/*.ipk
+            artifacts/*.apk
+            artifacts/sha256sums
+          generate_release_notes: true

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Hyper</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      // The Qwik loader dispatches every event handler. A plain side-effect import of it is
+      // tree-shaken from the production build (the package is marked side-effect free), and a
+      // bare <script src> does not resolve in vite dev, so load it as an emitted asset instead.
+      // Events queued before it runs (window._qwikEv) are processed when it starts.
+      import loaderUrl from "@qwik.dev/core/qwikloader.js?url";
+      import { render, jsx } from "@qwik.dev/core";
+      import Root from "./src/root";
+
+      const loader = document.createElement("script");
+      loader.src = loaderUrl;
+      document.head.append(loader);
+
+      render(document.querySelector("#root"), jsx(Root));
+    </script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "hyper-web",
+  "private": true,
+  "type": "module",
+  "description": "Hyper web UI for luci-app-hyper (Qwik v2, browser-only build served from /luci-static/hyper/)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "TZ=America/New_York node --test tests/*.test.ts",
+    "lint": "node scripts/lint-signals.mjs src/root.tsx src/pages/*.tsx src/components/*.tsx"
+  },
+  "devDependencies": {
+    "@qwik.dev/core": "2.0.0-rc.4",
+    "typescript": "5.9.3",
+    "vite": "8.2.4"
+  },
+  "engines": {
+    "node": ">=20.3.0"
+  },
+  "dependencies": {
+    "uqr": "0.1.3"
+  }
+}

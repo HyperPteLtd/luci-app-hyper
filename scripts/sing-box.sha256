@@ -1,0 +1,13 @@
+# sing-box core for luci-app-hyper: the official SagerNet OpenWrt packages, used as is.
+# Source: https://github.com/SagerNet/sing-box/releases/tag/v1.14.4 (sha256 digests published there).
+# Version bump: change HYPER_SINGBOX_VERSION in luci-app-hyper/Makefile, regenerate this file, run the tests.
+0ea1122295c11b178935a538ef3231348cfee570e060783ad03ade8f5400a30b  sing-box_1.14.4_openwrt_aarch64_cortex-a53.apk
+67e46d0d8be26189c4d71fab8aa68ab88178511a9866c440e5132d0278142d05  sing-box_1.14.4_openwrt_aarch64_cortex-a53.ipk
+c73ddbf79fa93ae217a9a79ec01ad5a22ff61a25534e05700e0cfb85684c7598  sing-box_1.14.4_openwrt_aarch64_generic.apk
+e735580c1eaf3f7b0da9129e5d50eb16f2e3d58c648f28fc4f30e263c3126385  sing-box_1.14.4_openwrt_aarch64_generic.ipk
+ee8724b2d5cf23032306d2177d9b06bfe07e3d6a4a8358ae3b45cc5f6e21342b  sing-box_1.14.4_openwrt_arm_cortex-a7_neon-vfpv4.apk
+0cc0b11ada2e13aef5c108c17cacbe201847ed40680e9b3322cff34593ba7ae6  sing-box_1.14.4_openwrt_arm_cortex-a7_neon-vfpv4.ipk
+dcffe3036a4601bfe6b36fd10d1c981afcbeb9d0ccb03b11d80f26223df2868a  sing-box_1.14.4_openwrt_mipsel_24kc.apk
+23bca9e9d7c135e2fd3981134cba9bda4d3a5a182f9831e08c4d8043343d43eb  sing-box_1.14.4_openwrt_mipsel_24kc.ipk
+5e600d4a4d16b86f3beed88ffa76dc4ab0b82d4129a47c357cc5d09e5cd36f24  sing-box_1.14.4_openwrt_x86_64.apk
+f87a26cce8c1f86016eae8423311aeaee119b3222c2f7afc3db0c1c368ac5a36  sing-box_1.14.4_openwrt_x86_64.ipk
